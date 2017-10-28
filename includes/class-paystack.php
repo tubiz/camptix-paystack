@@ -17,11 +17,6 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 	 */
 	protected $options = array();
 
-	/**
-	 * Runs during camptix_init, loads our options and sets some actions.
-	 *
-	 * @see CampTix_Addon
-	 */
 	function camptix_init() {
 		$this->options = array_merge( array(
 			'test_public_key'    => '',
@@ -34,16 +29,9 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 		add_action( 'template_redirect', array( $this, 'template_redirect' ) );
 	}
 
-	/**
-	 * Add payment settings fields
-	 *
-	 * This runs during settings field registration in CampTix for the
-	 * payment methods configuration screen. If your payment method has
-	 * options, this method is the place to add them to. You can use the
-	 * helper function to add typical settings fields. Don't forget to
-	 * validate them all in validate_options.
-	 */
+
 	function payment_settings_fields() {
+
 		$this->add_settings_field_helper( 'test_secret_key', 'Test Secret Key', array( $this, 'field_text' ) );
 		$this->add_settings_field_helper( 'test_public_key', 'Test Public Key', array( $this, 'field_text' ) );
 
@@ -53,16 +41,12 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 		$this->add_settings_field_helper( 'sandbox', 'Test Mode', array( $this, 'field_yesno' ),
 			'The Paystack Test Mode is a way to test payments without using real accounts and transactions.'
 		);
+
 	}
 
-	/**
-	 * Validate options
-	 *
-	 * @param array $input
-	 *
-	 * @return array
-	 */
+
 	function validate_options( $input ) {
+
 		$output = $this->options;
 
 		if ( isset( $input['test_public_key'] ) ) {
@@ -86,25 +70,17 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 		}
 
 		return $output;
+
 	}
 
-	/**
-	 * Watch for and process PayPal requests
-	 *
-	 * For PayPal we'll watch for some additional CampTix actions which may be
-	 * fired from PayPal either with a redirect (cancel and return) or an IPN (notify).
-	 */
+
 	function template_redirect() {
-		// New version requests.
+
 		if ( ! isset( $_REQUEST['tix_payment_method'] ) || 'paystack' != $_REQUEST['tix_payment_method'] ) {
 			return;
 		}
 
 		if ( isset( $_GET['tix_action'] ) ) {
-			if ( 'payment_cancel' == $_GET['tix_action'] ) {
-				$this->payment_cancel();
-			}
-
 			if ( 'payment_return' == $_GET['tix_action'] ) {
 				$this->payment_return();
 			}
@@ -113,17 +89,10 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 				$this->payment_notify();
 			}
 		}
+
 	}
 
-	/**
-	 * Process an IPN
-	 *
-	 * Runs when PayPal sends an IPN signal with a payment token and a
-	 * payload in $_POST. Verify the payload and use $this->payment_result
-	 * to signal a transaction result back to CampTix.
-	 *
-	 * @return mixed Null if returning early, or an integer matching one of the CampTix_Plugin::PAYMENT_STATUS_{status} constants
-	 */
+
 	function payment_notify() {
 		/** @var $camptix CampTix_Plugin */
 		global $camptix;
@@ -180,126 +149,6 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 	}
 
 
-
-	/**
-	 * Get the payment status ID for the given shorthand name
-	 *
-	 * Helps convert payment statuses from PayPal responses, to CampTix payment statuses.
-	 *
-	 * @param string $payment_status
-	 *
-	 * @return int
-	 */
-	function get_status_from_string( $payment_status ) {
-		$statuses = array(
-			'Completed' => CampTix_Plugin::PAYMENT_STATUS_COMPLETED,
-			'Pending'   => CampTix_Plugin::PAYMENT_STATUS_PENDING,
-			'Cancelled' => CampTix_Plugin::PAYMENT_STATUS_CANCELLED,
-			'Failed'    => CampTix_Plugin::PAYMENT_STATUS_FAILED,
-			'Denied'    => CampTix_Plugin::PAYMENT_STATUS_FAILED,
-			'Refunded'  => CampTix_Plugin::PAYMENT_STATUS_REFUNDED,
-			'Reversed'  => CampTix_Plugin::PAYMENT_STATUS_REFUNDED,
-			'Instant'   => CampTix_Plugin::PAYMENT_STATUS_REFUNDED,
-			'None'      => CampTix_Plugin::PAYMENT_STATUS_REFUND_FAILED,
-		);
-
-		// Return pending for unknown statuses.
-		if ( ! isset( $statuses[ $payment_status ] ) ) {
-			$payment_status = 'Pending';
-		}
-
-		return $statuses[ $payment_status ];
-	}
-
-	/**
-	 * Handle a canceled payment
-	 *
-	 * Runs when the user cancels their payment during checkout at PayPal.
-	 * his will simply tell CampTix to put the created attendee drafts into to Cancelled state.
-	 *
-	 * @return int One of the CampTix_Plugin::PAYMENT_STATUS_{status} constants
-	 */
-	function payment_cancel() {
-		/** @var $camptix CampTix_Plugin */
-		global $camptix;
-
-		$camptix->log( sprintf( 'Running payment_cancel. Request data attached.' ), null, $_REQUEST );
-		$camptix->log( sprintf( 'Running payment_cancel. Server data attached.'  ), null, $_SERVER );
-
-		$payment_token = ( isset( $_REQUEST['tix_payment_token'] ) ) ? trim( $_REQUEST['tix_payment_token'] ) : '';
-		$paypal_token = ( isset( $_REQUEST['token'] ) ) ? trim( $_REQUEST['token'] ) : '';
-
-		if ( ! $payment_token || ! $paypal_token ) {
-			wp_die( 'empty token' );
-		}
-
-		/**
-		 * @todo maybe check tix_paypal_token for security.
-		 */
-
-		$attendees = get_posts( array(
-			'posts_per_page' => 1,
-			'post_type'      => 'tix_attendee',
-			'post_status'    => 'any',
-			'meta_query'     => array(
-				array(
-					'key'     => 'tix_payment_token',
-					'compare' => '=',
-					'value'   => $payment_token,
-					'type'    => 'CHAR',
-				),
-			),
-		) );
-
-		if ( ! $attendees ) {
-			die( 'attendees not found' );
-		}
-
-		/**
-		 * It might be related to browsers, or it might be not, but PayPal has this thing
-		 * where it would complete a payment and then redirect the user to the payment_cancel
-		 * page. Here, before actually cancelling an attendee's ticket, we look up their
-		 * transaction ID, and if they have one, we check its status with PayPal.
-		 */
-
-		// Look for an associated transaction ID, in case this purchase has already been made.
-		$transaction_id = get_post_meta( $attendees[0]->ID, 'tix_transaction_id', true );
-		$access_token   = get_post_meta( $attendees[0]->ID, 'tix_access_token',   true );
-
-		if ( ! empty( $transaction_id ) ) {
-			$request = $this->request( array(
-				'METHOD'        => 'GetTransactionDetails',
-				'TRANSACTIONID' => $transaction_id,
-			) );
-
-			$transaction_details = wp_parse_args( wp_remote_retrieve_body( $request ) );
-			if ( isset( $transaction_details['ACK'] ) && 'Success' == $transaction_details['ACK'] ) {
-				$status = $this->get_status_from_string( $transaction_details['PAYMENTSTATUS'] );
-
-				if ( in_array( $status, array( CampTix_Plugin::PAYMENT_STATUS_PENDING, CampTix_Plugin::PAYMENT_STATUS_COMPLETED	) ) ) {
-					// False alarm. The payment has indeed been made and no need to cancel.
-					$camptix->log( 'False alarm on payment_cancel. This transaction is valid.', 0, $transaction_details );
-					wp_safe_redirect( $camptix->get_access_tickets_link( $access_token ) );
-					die();
-				}
-			}
-		}
-
-		// Set the associated attendees to cancelled.
-		return $camptix->payment_result( $payment_token, CampTix_Plugin::PAYMENT_STATUS_CANCELLED );
-	}
-
-	/**
-	 * Process a request to complete the order
-	 *
-	 * This runs when PayPal redirects the user back after the user has clicked
-	 * Pay Now on PayPal. At this point, the user hasn't been charged yet, so we
-	 * verify their order once more and fire DoExpressCheckoutPayment to produce
-	 * the charge. This method ends with a call to payment_result back to CampTix
-	 * which will redirect the user to their tickets page, send receipts, etc.
-	 *
-	 * @return int One of the CampTix_Plugin::PAYMENT_STATUS_{status} constants
-	 */
 	function payment_return() {
 
 		/** @var $camptix CampTix_Plugin */
@@ -323,7 +172,9 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 			wp_die( 'could not find order' );
 		}
 
-		$secret_key = $this->options['sandbox'] ? $this->options['test_secret_key'] : $this->options['live_secret_key'];
+		$options = $this->options;
+
+		$secret_key = $options['sandbox'] ? $options['test_secret_key'] : $options['live_secret_key'];
 
 		$paystack_url 	= 'https://api.paystack.co/transaction/verify/'  . rawurlencode($reference);
 
@@ -387,31 +238,18 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 			return $camptix->payment_result( $payment_token, CampTix_Plugin::PAYMENT_STATUS_FAILED, $payment_data );
 
 		}
-
 	}
 
-	/**
-	 * Process a checkout request
-	 *
-	 * This method is the fire starter. It's called when the user initiates
-	 * a checkout process with the selected payment method. In PayPal's case,
-	 * if everything's okay, we redirect to the PayPal Express Checkout page with
-	 * the details of our transaction. If something's wrong, we return a failed
-	 * result back to CampTix immediately.
-	 *
-	 * @param string $payment_token
-	 *
-	 * @return int One of the CampTix_Plugin::PAYMENT_STATUS_{status} constants
-	 */
+
 	function payment_checkout( $payment_token ) {
-		/** @var CampTix_Plugin $camptix */
+
 		global $camptix;
 
 		if ( ! $payment_token || empty( $payment_token ) )
 			return false;
 
 		if ( ! in_array( $this->camptix_options['currency'], $this->supported_currencies ) ) {
-			wp_die( __( 'The selected currency is not supported by this payment method.', 'camptix' ) );
+			wp_die( 'The selected currency is not supported by this payment method.' );
 		}
 
 		$return_url = add_query_arg( array(
@@ -420,7 +258,6 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 			'tix_payment_method' => 'paystack',
 		), $camptix->get_tickets_url() );
 
-		// Replace credentials from a predefined account if any.
 		$options = $this->options;
 
 		$order = $this->get_order( $payment_token );

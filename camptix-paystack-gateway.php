@@ -14,13 +14,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-
-define( 'CT_PAYSTACK_MAIN_FILE', __FILE__ );
-//define( 'WC_PAYSTACK_URL', untrailingslashit( plugins_url( '/', __FILE__ ) ) );
-
-define( 'CT_PAYSTACK_VERSION', '1.0.0' );
-
-
 function tbz_paystack_camptix_add_ngn_currency( $currencies ) {
 	$currencies['NGN'] = array(
 		'label' 	=> 'Nigerian Naira',
