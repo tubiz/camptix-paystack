@@ -2,19 +2,13 @@
 
 
 class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
-	/**
-	 * The following variables are required for every payment method.
-	 */
+
 	public $id = 'paystack';
 	public $name = 'Paystack';
 	public $description = 'Paystack';
 
 	public $supported_currencies = array( 'NGN' );
 
-	/**
-	 * We can have an array to store our options.
-	 * Use $this->get_payment_options() to retrieve them.
-	 */
 	protected $options = array();
 
 	function camptix_init() {
@@ -93,59 +87,77 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 	}
 
 
-	function payment_notify() {
-		/** @var $camptix CampTix_Plugin */
+	function payment_checkout( $payment_token ) {
+
 		global $camptix;
 
-		$payment_token = isset( $_REQUEST['tix_payment_token'] ) ? trim( $_REQUEST['tix_payment_token'] ) : '';
+		if ( ! $payment_token || empty( $payment_token ) )
+			return false;
 
-		// Verify the IPN came from PayPal.
-		$payload = stripslashes_deep( $_POST );
-		$response = $this->verify_ipn( $payload );
-		if ( '200' != wp_remote_retrieve_response_code( $response ) || 'VERIFIED' != wp_remote_retrieve_body( $response ) ) {
-			$camptix->log( 'Could not verify PayPal IPN.', 0, null );
-			return;
+		if ( ! in_array( $this->camptix_options['currency'], $this->supported_currencies ) ) {
+			wp_die( 'The selected currency is not supported by this payment method.' );
 		}
 
-		// Grab the txn id (or the parent id in case of refunds, cancels, etc)
-		$txn_id = ! empty( $payload['txn_id'] ) ? $payload['txn_id'] : 'None';
-		if ( ! empty( $payload['parent_txn_id'] ) ) {
-			$txn_id = $payload['parent_txn_id'];
-		}
+		$return_url = add_query_arg( array(
+			'tix_action'         => 'payment_return',
+			'tix_payment_token'  => $payment_token,
+			'tix_payment_method' => 'paystack',
+		), $camptix->get_tickets_url() );
 
-		// Make sure we have a status
-		if ( empty( $payload['payment_status'] ) ) {
-			$camptix->log( sprintf( 'Received IPN with no payment status %s', $txn_id ), 0, $payload );
-			return;
-		}
+		$options = $this->options;
 
-		// Fetch latest transaction details to avoid race conditions.
-		$txn_details_payload = array(
-			'METHOD' => 'GetTransactionDetails',
-			'TRANSACTIONID' => $txn_id,
-		);
-		$txn_details = wp_parse_args( wp_remote_retrieve_body( $this->request( $txn_details_payload ) ) );
-		if ( ! isset( $txn_details['ACK'] ) || 'Success' != $txn_details['ACK'] ) {
-			$camptix->log( sprintf( 'Fetching transaction after IPN failed %s.', $txn_id, 0, $txn_details ) );
-			return;
-		}
+		$order = $this->get_order( $payment_token );
 
-		$camptix->log( sprintf( 'Payment details for %s via IPN', $txn_id ), null, $txn_details );
-		$payment_status = $txn_details['PAYMENTSTATUS'];
+		$attendee_email = get_post_meta( $order['attendee_id'], 'tix_receipt_email', true );
 
-		$payment_data = array(
-			'transaction_id' => $txn_id,
-			'transaction_details' => array(
-				// @todo maybe add more info about the payment
-				'raw' => $txn_details,
-			),
+		$secret_key = $options['sandbox'] ? $options['test_secret_key'] : $options['live_secret_key'];
+
+		$paystack_url 	= 'https://api.paystack.co/transaction/initialize';
+
+		$headers = array(
+			'Content-Type'	=> 'application/json',
+			'Authorization' => 'Bearer ' . $secret_key,
+			'Cache-Control'	=> 'no-cache'
 		);
 
-		/**
-		 * Returns the payment result back to CampTix. Don't be afraid to return a
-		 * payment result twice. In fact, it's typical for payment methods with IPN support.
-		 */
-		return $camptix->payment_result( $payment_token, $this->get_status_from_string( $payment_status ), $payment_data );
+		$body = array(
+			'amount'		=> $order['total'] * 100,
+			'email'			=> $attendee_email,
+			'callback_url'	=> $return_url
+		);
+
+		$args = array(
+			'body'		=> json_encode( $body ),
+			'headers'	=> $headers,
+			'timeout'	=> 60
+		);
+
+		$request = wp_remote_post( $paystack_url, $args );
+
+        if ( ! is_wp_error( $request ) && 200 == wp_remote_retrieve_response_code( $request ) ) {
+
+        	$paystack_response = json_decode( wp_remote_retrieve_body( $request ) );
+
+        	$transaction_reference = $paystack_response->data->reference;
+
+        	$payment_url = $paystack_response->data->authorization_url;
+
+        	update_post_meta( $order['attendee_id'], 'tix_transaction_id', $transaction_reference );
+
+			wp_redirect( $payment_url );
+
+			die();
+
+        } else {
+
+        	$paystack_response = json_decode( wp_remote_retrieve_body( $request ) );
+
+			$camptix->error( 'Paystack error: ' . $paystack_response->message );
+
+			return $camptix->payment_result( $payment_token, CampTix_Plugin::PAYMENT_STATUS_FAILED, array() );
+
+        }
+
 	}
 
 
@@ -238,99 +250,82 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 			return $camptix->payment_result( $payment_token, CampTix_Plugin::PAYMENT_STATUS_FAILED, $payment_data );
 
 		}
+
 	}
 
 
-	function payment_checkout( $payment_token ) {
+	function payment_notify() {
 
 		global $camptix;
 
-		if ( ! $payment_token || empty( $payment_token ) )
-			return false;
-
-		if ( ! in_array( $this->camptix_options['currency'], $this->supported_currencies ) ) {
-			wp_die( 'The selected currency is not supported by this payment method.' );
+		if ( ( strtoupper( $_SERVER['REQUEST_METHOD'] ) != 'POST' ) || ! array_key_exists('HTTP_X_PAYSTACK_SIGNATURE', $_SERVER) ) {
+			exit;
 		}
 
-		$return_url = add_query_arg( array(
-			'tix_action'         => 'payment_return',
-			'tix_payment_token'  => $payment_token,
-			'tix_payment_method' => 'paystack',
-		), $camptix->get_tickets_url() );
+	    $json = file_get_contents( "php://input" );
 
-		$options = $this->options;
-
-		$order = $this->get_order( $payment_token );
-
-		$attendee_email = get_post_meta( $order['attendee_id'], 'tix_receipt_email', true );
+	    $options = $this->options;
 
 		$secret_key = $options['sandbox'] ? $options['test_secret_key'] : $options['live_secret_key'];
 
-		$paystack_url 	= 'https://api.paystack.co/transaction/initialize';
+		// validate event do all at once to avoid timing attack
+		if ( $_SERVER['HTTP_X_PAYSTACK_SIGNATURE'] !== hash_hmac( 'sha512', $json, $secret_key ) ) {
+			exit;
+		}
 
-		$headers = array(
-			'Content-Type'	=> 'application/json',
-			'Authorization' => 'Bearer ' . $secret_key,
-			'Cache-Control'	=> 'no-cache'
-		);
+	    $event = json_decode( $json );
 
-		$body = array(
-			'amount'		=> $order['total'] * 100,
-			'email'			=> $attendee_email,
-			'callback_url'	=> $return_url
-		);
+	    if ( 'charge.success' == $event->event ) {
 
-		$args = array(
-			'body'		=> json_encode( $body ),
-			'headers'	=> $headers,
-			'timeout'	=> 60
-		);
+			http_response_code( 200 );
 
-		$request = wp_remote_post( $paystack_url, $args );
+	    	$txn_id = $event->data->reference;
 
-        if ( ! is_wp_error( $request ) && 200 == wp_remote_retrieve_response_code( $request ) ) {
+			$rel_attendees_query = array(
+				'post_type' => 'tix_attendee',
+				'post_status' => 'any',
+				'posts_per_page' => 5,
+				'orderby' => 'ID',
+				'order' => 'DESC',
+				'meta_query' => array(
+					array(
+						'key' => 'tix_transaction_id',
+						'compare' => '=',
+						'value' => $txn_id,
+					),
+				),
+			);
 
-        	$paystack_response = json_decode( wp_remote_retrieve_body( $request ) );
+			$attendee = get_posts( $rel_attendees_query );
 
-        	$transaction_reference = $paystack_response->data->reference;
+			if( 'publish' == $attendee[0]->post_status ) {
+				return;
+			}
 
-        	$payment_url = $paystack_response->data->authorization_url;
+			$attendee_id = $attendee[0]->ID;
 
-			wp_redirect( $payment_url );
+			$payment_token = get_post_meta( $attendee_id, 'tix_payment_token', true );
 
-			die();
+			$order = $this->get_order( $payment_token );
 
-        } else {
+			$camptix->log( sprintf( 'Payment details for %s', $txn_id ), $attendee_id, $txn );
 
-        	$paystack_response = json_decode( wp_remote_retrieve_body( $request ) );
+			/**
+			 * Note that when returning a successful payment, CampTix will be
+			 * expecting the transaction_id and transaction_details array keys.
+			 */
+			$payment_data = array(
+				'transaction_id' => $txn_id,
+				'transaction_details' => array(
+					'raw' => $txn,
+				),
+			);
 
-			$camptix->error( 'Paystack error: ' . $paystack_response->message );
+			return $camptix->payment_result( $payment_token, CampTix_Plugin::PAYMENT_STATUS_COMPLETED, $payment_data );
 
-			return $camptix->payment_result( $payment_token, CampTix_Plugin::PAYMENT_STATUS_FAILED, array() );
+		}
 
-        }
+		exit;
+
 	}
-
-	/**
-	 * Validate an incoming IPN request
-	 *
-	 * @param array $payload
-	 *
-	 * @return mixed A WP_Error for a failed request, or an array for a successful response
-	 */
-	function verify_ipn( $payload = array() ) {
-		// Replace credentials from a predefined account if any.
-		$options = $this->options;
-
-		$url          = $options['sandbox'] ? 'https://www.sandbox.paypal.com/cgi-bin/webscr' : 'https://www.paypal.com/cgi-bin/webscr';
-		$payload      = 'cmd=_notify-validate&' . http_build_query( $payload );
-		$request_args = array(
-			'body'        => $payload,
-			'timeout'     => apply_filters( 'camptix_paypal_timeout', 20 ),
-			'httpversion' => '1.1'
-		);
-
-		return wp_remote_post( $url, $request_args );
-	}
-
 }
