@@ -4,20 +4,45 @@
 class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 
 	public $id = 'paystack';
+
 	public $name = 'Paystack';
-	public $description = 'Paystack';
+
+	public $description;
 
 	public $supported_currencies = array( 'NGN' );
 
 	protected $options = array();
 
+    function __construct() {
+
+        $this->description = $this->paystack_gateway_description();
+		parent::__construct();
+    }
+
+
+    function paystack_gateway_description() {
+
+    	global $camptix;
+
+		$notify_url = add_query_arg( array(
+			'tix_action' => 'payment_notify',
+			'tix_payment_method' => 'paystack',
+		), $camptix->get_tickets_url() );
+
+		$description = 'Paystack <h4>Optional: To avoid situations where bad network makes it impossible to verify transactions, set your webhook URL <a href="https://dashboard.paystack.co/#/settings/developer" target=_blank rel="noopener noreferrer">here</a> to the URL below<strong style="color: red"><pre><code>' . esc_url( $notify_url ). '</code></pre></strong></h4>';
+
+		return $description;
+    }
+
+
 	function camptix_init() {
+
 		$this->options = array_merge( array(
-			'test_public_key'    => '',
-			'test_secret_key'  => '',
-			'live_public_key'  => '',
-			'live_secret_key' => '',
-			'sandbox'       => true,
+			'test_public_key'	=> '',
+			'test_secret_key'  	=> '',
+			'live_public_key'  	=> '',
+			'live_secret_key' 	=> '',
+			'sandbox'       	=> true,
 		), $this->get_payment_options() );
 
 		add_action( 'template_redirect', array( $this, 'template_redirect' ) );
@@ -35,7 +60,6 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 		$this->add_settings_field_helper( 'sandbox', 'Test Mode', array( $this, 'field_yesno' ),
 			'The Paystack Test Mode is a way to test payments without using real accounts and transactions.'
 		);
-
 	}
 
 
@@ -83,7 +107,6 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 				$this->payment_notify();
 			}
 		}
-
 	}
 
 
@@ -98,19 +121,24 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 			wp_die( 'The selected currency is not supported by this payment method.' );
 		}
 
+		$options = $this->options;
+
+		$public_key = $options['sandbox'] ? $options['test_public_key'] : $options['live_public_key'];
+		$secret_key = $options['sandbox'] ? $options['test_secret_key'] : $options['live_secret_key'];
+
+		if ( ! ( $public_key && $secret_key ) ) {
+			wp_die( 'Kindly enter your Paystack API keys on the CampTix payment page.' );
+		}
+
 		$return_url = add_query_arg( array(
 			'tix_action'         => 'payment_return',
 			'tix_payment_token'  => $payment_token,
 			'tix_payment_method' => 'paystack',
 		), $camptix->get_tickets_url() );
 
-		$options = $this->options;
-
 		$order = $this->get_order( $payment_token );
 
 		$attendee_email = get_post_meta( $order['attendee_id'], 'tix_receipt_email', true );
-
-		$secret_key = $options['sandbox'] ? $options['test_secret_key'] : $options['live_secret_key'];
 
 		$paystack_url 	= 'https://api.paystack.co/transaction/initialize';
 
@@ -157,13 +185,11 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 			return $camptix->payment_result( $payment_token, CampTix_Plugin::PAYMENT_STATUS_FAILED, array() );
 
         }
-
 	}
 
 
 	function payment_return() {
 
-		/** @var $camptix CampTix_Plugin */
 		global $camptix;
 
 		$payment_token = isset( $_REQUEST['tix_payment_token'] ) ? trim( $_REQUEST['tix_payment_token'] ) : '';
@@ -213,10 +239,6 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 
 				$camptix->log( sprintf( 'Payment details for %s', $txn_id ), $order['attendee_id'], $txn );
 
-				/**
-				 * Note that when returning a successful payment, CampTix will be
-				 * expecting the transaction_id and transaction_details array keys.
-				 */
 				$payment_data = array(
 					'transaction_id' => $txn_id,
 					'transaction_details' => array(
@@ -250,7 +272,6 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 			return $camptix->payment_result( $payment_token, CampTix_Plugin::PAYMENT_STATUS_FAILED, $payment_data );
 
 		}
-
 	}
 
 
@@ -310,10 +331,6 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 
 			$camptix->log( sprintf( 'Payment details for %s', $txn_id ), $attendee_id, $txn );
 
-			/**
-			 * Note that when returning a successful payment, CampTix will be
-			 * expecting the transaction_id and transaction_details array keys.
-			 */
 			$payment_data = array(
 				'transaction_id' => $txn_id,
 				'transaction_details' => array(
@@ -326,6 +343,5 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 		}
 
 		exit;
-
 	}
 }

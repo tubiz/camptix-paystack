@@ -2,10 +2,9 @@
 /*
 	Plugin Name:	CampTix Paystack Payment Gateway
 	Plugin URI: 	https://bosun.me
-	Description: 	Psystack payment gateway for CampTix
+	Description: 	Paystack payment gateway for CampTix
 	Version: 		1.0.0
 	Author: 		Tunbosun Ayinla
-	Author URI: 	https://bosun.me
 	License:        GPL-2.0+
 	License URI:    http://www.gnu.org/licenses/gpl-2.0.txt
 */
@@ -15,6 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 function tbz_paystack_camptix_add_ngn_currency( $currencies ) {
+
 	$currencies['NGN'] = array(
 		'label' 	=> 'Nigerian Naira',
 		'format' 	=> '₦%s',
@@ -25,6 +25,7 @@ add_filter( 'camptix_currencies', 'tbz_paystack_camptix_add_ngn_currency' );
 
 
 function tbz_paystack_camptix_load_payment_method() {
+
 	if ( ! class_exists( 'CampTix_Payment_Method_Paystack' ) )
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-paystack.php';
 	camptix_register_addon( 'CampTix_Payment_Method_Paystack' );
