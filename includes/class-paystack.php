@@ -9,7 +9,7 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 
 	public $description;
 
-	public $supported_currencies = array( 'NGN' );
+	public $supported_currencies = array( 'NGN', 'USD', 'GHS', 'ZAR', 'KES', 'XOF', 'EGP', 'RWF' );
 
 	protected $options = array();
 
