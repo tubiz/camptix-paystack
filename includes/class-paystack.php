@@ -151,6 +151,7 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 		$body = array(
 			'amount'		=> $order['total'] * 100,
 			'email'			=> $attendee_email,
+			'currency'      => $this->camptix_options['currency'],
 			'callback_url'	=> $return_url
 		);
 
