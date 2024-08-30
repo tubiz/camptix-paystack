@@ -3,7 +3,7 @@
 	Plugin Name:	CampTix Paystack Payment Gateway
 	Plugin URI: 	https://bosun.me
 	Description: 	Paystack payment gateway for CampTix
-	Version: 		1.0.0
+	Version: 		1.1.0
 	Author: 		Tunbosun Ayinla
 	License:        GPL-2.0+
 	License URI:    http://www.gnu.org/licenses/gpl-2.0.txt
