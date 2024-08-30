@@ -1,11 +1,11 @@
 === CampTix Paystack Payment Gateway ===
 Contributors: tubiz
 Donate link: https://bosun.me/donate
-Tags: paystack, camptix, payment gateway, interswitch, tubiz plugins, verve, nigeria, mastercard, visa
-Requires at least: 4.4
-Tested up to: 4.8
-Requires PHP: 5.6
-Stable tag: 1.0.0
+Tags: paystack, camptix, payment gateway
+Requires at least: 6.2
+Tested up to: 6.6
+Requires PHP: 7.4
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -94,14 +94,11 @@ To configure the plugin, go to __Tickets > Setup__ from the left hand menu, the
 
 == Changelog ==
 
+= 1.1.0, August 30, 2024 =
+*   Add support for additional currencies ('USD', 'GHS', 'ZAR', 'KES', 'XOF', 'EGP' & 'RWF')
+
 = 1.0.0, October 30, 2017 =
 *   First release
-
-
-
-== Upgrade Notice ==
-* No upgrade notice yet
-
 
 == Screenshots ==
 * No screenshots yet
