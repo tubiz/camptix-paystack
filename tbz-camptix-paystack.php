@@ -31,11 +31,10 @@ function tbz_paystack_camptix_add_ngn_currency( $currencies ) {
 }
 add_filter( 'camptix_currencies', 'tbz_paystack_camptix_add_ngn_currency' );
 
-
 function tbz_paystack_camptix_load_payment_method() {
-
-	if ( ! class_exists( 'CampTix_Payment_Method_Paystack' ) )
+	if ( ! class_exists( 'CampTix_Payment_Method_Paystack' ) ) {
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-paystack.php';
+	}
 	camptix_register_addon( 'CampTix_Payment_Method_Paystack' );
 }
 add_action( 'camptix_load_addons', 'tbz_paystack_camptix_load_payment_method' );
