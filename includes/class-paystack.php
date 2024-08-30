@@ -293,6 +293,10 @@ class CampTix_Payment_Method_Paystack extends CampTix_Payment_Method {
 	public function payment_notify() {
 		global $camptix;
 
+		if ( ! isset( $_SERVER['REQUEST_METHOD'] ) ) {
+			exit;
+		}
+
 		if ( strtoupper( $_SERVER['REQUEST_METHOD'] ) !== 'POST' ) {
 			exit;
 		}
